@@ -1,86 +1,65 @@
-import { useMemo, useCallback } from 'react';
-import ReactFlow, {
-  Node,
-  Edge,
-  Position,
-  ConnectionLineType,
-  MarkerType,
-  Background,
-  BackgroundVariant,
-  Handle,
-  NodeProps,
-} from 'reactflow';
-import 'reactflow/dist/style.css';
-import dagre from '@dagrejs/dagre';
+import { useMemo } from 'react';
 import { DFAResult } from '@/algorithms/dfaBuilder';
 import { motion } from 'framer-motion';
 
-const NODE_SIZE = 56;
+const R = 28; // node radius
+const SELF_LOOP_R = 18;
+const ARROW_SIZE = 8;
+const H_GAP = 140;
+const V_CENTER = 160;
+const START_ARROW_LEN = 36;
+const PAD_LEFT = 70;
 
-/* ── Custom node with double-circle for accepting ── */
-function DFANode({ data }: NodeProps) {
-  const { label, isAccepting, isStart } = data;
-  return (
-    <div className="relative flex items-center justify-center" style={{ width: NODE_SIZE, height: NODE_SIZE }}>
-      <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
-      <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
+interface Vec { x: number; y: number }
 
-      {/* Start arrow */}
-      {isStart && (
-        <svg
-          className="absolute"
-          style={{ left: -30, top: '50%', transform: 'translateY(-50%)' }}
-          width="28" height="16" viewBox="0 0 28 16"
-        >
-          <polygon points="0,8 16,0 16,16" fill="hsl(38,92%,50%)" />
-          <line x1="16" y1="8" x2="28" y2="8" stroke="hsl(38,92%,50%)" strokeWidth="2" />
-        </svg>
-      )}
-
-      {/* Outer circle (double ring for accepting) */}
-      <svg width={NODE_SIZE} height={NODE_SIZE} className="absolute inset-0">
-        {isAccepting && (
-          <circle
-            cx={NODE_SIZE / 2} cy={NODE_SIZE / 2} r={NODE_SIZE / 2 - 2}
-            fill="none" stroke="hsl(168,70%,42%)" strokeWidth="2"
-          />
-        )}
-        <circle
-          cx={NODE_SIZE / 2} cy={NODE_SIZE / 2}
-          r={isAccepting ? NODE_SIZE / 2 - 8 : NODE_SIZE / 2 - 2}
-          fill={isAccepting ? 'hsl(168,70%,42%)' : 'hsl(230,80%,56%)'}
-          stroke={isAccepting ? 'hsl(168,70%,42%)' : 'hsl(230,70%,48%)'}
-          strokeWidth="2"
-        />
-      </svg>
-
-      {/* Label */}
-      <span
-        className="relative z-10 font-mono font-bold select-none"
-        style={{ fontSize: 15, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}
-      >
-        {label}
-      </span>
-    </div>
-  );
+function normalize(v: Vec, len = 1): Vec {
+  const m = Math.sqrt(v.x * v.x + v.y * v.y) || 1;
+  return { x: (v.x / m) * len, y: (v.y / m) * len };
 }
 
-const nodeTypes = { dfaNode: DFANode };
+function arrowHead(tip: Vec, dir: Vec): string {
+  const d = normalize(dir, ARROW_SIZE);
+  const perp = { x: -d.y * 0.5, y: d.x * 0.5 };
+  const p1 = { x: tip.x - d.x + perp.x, y: tip.y - d.y + perp.y };
+  const p2 = { x: tip.x - d.x - perp.x, y: tip.y - d.y - perp.y };
+  return `M${tip.x},${tip.y} L${p1.x},${p1.y} L${p2.x},${p2.y} Z`;
+}
 
-function buildElements(dfa: DFAResult): { nodes: Node[]; edges: Edge[] } {
-  const nodes: Node[] = dfa.states.map(state => ({
-    id: state.name,
-    type: 'dfaNode',
-    data: {
-      label: state.name,
-      isAccepting: state.isAccepting,
-      isStart: state.name === dfa.startState,
-    },
-    position: { x: 0, y: 0 },
-    sourcePosition: Position.Right,
-    targetPosition: Position.Left,
-    style: { width: NODE_SIZE, height: NODE_SIZE },
-  }));
+export default function DFAGraph({ dfa, graphRef }: { dfa: DFAResult; graphRef?: React.RefObject<HTMLDivElement> }) {
+  const layout = useMemo(() => {
+    // Position states in a row (LR). Use dagre-like simple row layout.
+    const statePos = new Map<string, Vec>();
+    const ordered = [...dfa.states];
+
+    // BFS from start to order states logically
+    const visited = new Set<string>();
+    const queue = [dfa.startState];
+    const order: string[] = [];
+    visited.add(dfa.startState);
+    while (queue.length > 0) {
+      const s = queue.shift()!;
+      order.push(s);
+      // find transitions from s, add unvisited targets
+      for (const t of dfa.transitions) {
+        if (t.from === s && !visited.has(t.to)) {
+          visited.add(t.to);
+          queue.push(t.to);
+        }
+      }
+    }
+    // Add any remaining states not reachable
+    for (const s of ordered) {
+      if (!visited.has(s.name)) order.push(s.name);
+    }
+
+    order.forEach((name, i) => {
+      statePos.set(name, { x: PAD_LEFT + i * H_GAP, y: V_CENTER });
+    });
+
+    return { statePos, order };
+  }, [dfa]);
+
+  const { statePos, order } = layout;
 
   // Group transitions by from→to
   const transMap = new Map<string, string[]>();
@@ -90,81 +69,11 @@ function buildElements(dfa: DFAResult): { nodes: Node[]; edges: Edge[] } {
     transMap.get(key)!.push(t.symbol);
   });
 
-  const edges: Edge[] = [];
-  transMap.forEach((symbols, key) => {
-    const [from, to] = key.split('->');
-    const isSelf = from === to;
-    // Check if reverse edge exists for curve handling
-    const reverseKey = `${to}->${from}`;
-    const hasBidirectional = transMap.has(reverseKey) && from !== to;
+  const svgW = PAD_LEFT + order.length * H_GAP + 40;
+  const svgH = V_CENTER * 2 + 20;
 
-    edges.push({
-      id: `e-${key}`,
-      source: from,
-      target: to,
-      label: symbols.join(', '),
-      type: isSelf ? 'default' : 'smoothstep',
-      animated: false,
-      style: {
-        stroke: isSelf ? 'hsl(280,60%,55%)' : 'hsl(220,20%,45%)',
-        strokeWidth: 2,
-      },
-      labelStyle: {
-        fill: 'hsl(220,25%,15%)',
-        fontWeight: 700,
-        fontSize: 13,
-        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-      },
-      labelBgStyle: {
-        fill: 'hsl(0,0%,97%)',
-        fillOpacity: 0.95,
-      },
-      labelBgPadding: [6, 4] as [number, number],
-      labelBgBorderRadius: 6,
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color: isSelf ? 'hsl(280,60%,55%)' : 'hsl(220,20%,45%)',
-        width: 18,
-        height: 18,
-      },
-      ...(hasBidirectional && from < to ? { sourceHandle: 'top', targetHandle: 'top' } : {}),
-    });
-  });
-
-  return { nodes, edges };
-}
-
-function layoutNodes(nodes: Node[], edges: Edge[]): Node[] {
-  const g = new dagre.graphlib.Graph();
-  g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: 'LR', nodesep: 100, ranksep: 160, marginx: 40, marginy: 40 });
-
-  nodes.forEach(node => {
-    g.setNode(node.id, { width: NODE_SIZE + 60, height: NODE_SIZE + 60 });
-  });
-  edges.forEach(edge => {
-    g.setEdge(edge.source, edge.target);
-  });
-
-  dagre.layout(g);
-
-  return nodes.map(node => {
-    const n = g.node(node.id);
-    return {
-      ...node,
-      position: { x: n.x - NODE_SIZE / 2, y: n.y - NODE_SIZE / 2 },
-    };
-  });
-}
-
-interface DFAGraphProps {
-  dfa: DFAResult;
-  graphRef?: React.RefObject<HTMLDivElement>;
-}
-
-export default function DFAGraph({ dfa, graphRef }: DFAGraphProps) {
-  const { nodes: rawNodes, edges } = useMemo(() => buildElements(dfa), [dfa]);
-  const nodes = useMemo(() => layoutNodes(rawNodes, edges), [rawNodes, edges]);
+  // Determine which edges go above/below to avoid overlap
+  const edgeEntries = [...transMap.entries()];
 
   return (
     <motion.div
@@ -176,39 +85,186 @@ export default function DFAGraph({ dfa, graphRef }: DFAGraphProps) {
         <span>DFA State Diagram</span>
         <div className="flex gap-4 text-[11px] font-normal normal-case tracking-normal">
           <span className="flex items-center gap-1.5">
-            <svg width="14" height="14"><polygon points="0,7 10,2 10,12" fill="hsl(38,92%,50%)" /></svg>
+            <svg width="14" height="14"><polygon points="0,7 10,2 10,12" fill="hsl(220,70%,50%)" /></svg>
             Start
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded-full inline-block" style={{ background: 'hsl(230,80%,56%)' }} />
+            <span className="w-3.5 h-3.5 rounded-full inline-block border-2" style={{ borderColor: 'hsl(220,70%,50%)' }} />
             Normal
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded-full inline-block" style={{
-              background: 'hsl(168,70%,42%)',
-              boxShadow: '0 0 0 2px hsl(0,0%,100%), 0 0 0 4px hsl(168,70%,42%)',
+            <span className="w-3 h-3 rounded-full inline-block border-2" style={{
+              borderColor: 'hsl(220,70%,50%)',
+              boxShadow: '0 0 0 2px hsl(220,70%,50%)',
             }} />
             Accepting
           </span>
         </div>
       </div>
-      <div ref={graphRef} className="h-[400px] bg-gradient-to-br from-slate-50 to-white">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.4 }}
-          connectionLineType={ConnectionLineType.SmoothStep}
-          nodesDraggable={true}
-          nodesConnectable={false}
-          elementsSelectable={false}
-          proOptions={{ hideAttribution: true }}
-          minZoom={0.3}
-          maxZoom={2}
-        >
-          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(220,14%,88%)" />
-        </ReactFlow>
+
+      <div ref={graphRef} className="overflow-x-auto bg-white" style={{ minHeight: svgH }}>
+        <svg width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`} className="mx-auto block">
+          {/* Start arrow */}
+          {(() => {
+            const startPos = statePos.get(dfa.startState)!;
+            const tipX = startPos.x - R;
+            const tailX = tipX - START_ARROW_LEN;
+            return (
+              <g>
+                <line x1={tailX} y1={startPos.y} x2={tipX} y2={startPos.y}
+                  stroke="hsl(220,70%,50%)" strokeWidth="2" />
+                <path d={arrowHead({ x: tipX, y: startPos.y }, { x: 1, y: 0 })}
+                  fill="hsl(220,70%,50%)" />
+              </g>
+            );
+          })()}
+
+          {/* Edges */}
+          {edgeEntries.map(([key, symbols]) => {
+            const [from, to] = key.split('->');
+            const pFrom = statePos.get(from)!;
+            const pTo = statePos.get(to)!;
+            const label = symbols.join(', ');
+
+            if (from === to) {
+              // Self-loop (draw above)
+              const cx = pFrom.x;
+              const cy = pFrom.y - R - SELF_LOOP_R - 2;
+              const enterAngle = Math.PI * 0.75;
+              const exitAngle = Math.PI * 0.25;
+              const startX = cx + SELF_LOOP_R * Math.cos(enterAngle + Math.PI);
+              const startY = cy + SELF_LOOP_R * Math.sin(enterAngle + Math.PI);
+
+              // Arc from top-left of node to top-right
+              const loopStartX = pFrom.x - R * 0.5;
+              const loopStartY = pFrom.y - R * 0.85;
+              const loopEndX = pFrom.x + R * 0.5;
+              const loopEndY = pFrom.y - R * 0.85;
+              const loopTopY = pFrom.y - R - SELF_LOOP_R * 2 - 6;
+
+              const path = `M${loopStartX},${loopStartY} C${loopStartX - 12},${loopTopY} ${loopEndX + 12},${loopTopY} ${loopEndX},${loopEndY}`;
+
+              // Arrow direction at end
+              const dir = { x: -0.5, y: 0.85 };
+
+              return (
+                <g key={key}>
+                  <path d={path} fill="none" stroke="hsl(220,70%,50%)" strokeWidth="2" />
+                  <path d={arrowHead({ x: loopEndX, y: loopEndY }, dir)} fill="hsl(220,70%,50%)" />
+                  <text x={pFrom.x} y={loopTopY + 2}
+                    textAnchor="middle" dominantBaseline="middle"
+                    className="text-xs font-bold font-mono" fill="hsl(220,70%,50%)"
+                  >{label}</text>
+                </g>
+              );
+            }
+
+            // Check for reverse edge
+            const reverseKey = `${to}->${from}`;
+            const hasReverse = transMap.has(reverseKey);
+            const fromIdx = order.indexOf(from);
+            const toIdx = order.indexOf(to);
+            const isForward = fromIdx < toIdx;
+            const dist = Math.abs(toIdx - fromIdx);
+
+            // Determine curve direction
+            // For adjacent forward edges: straight
+            // For back-edges or long jumps: curve above or below
+            let curveDir = 0; // 0 = straight, -1 = above, 1 = below
+
+            if (dist > 1) {
+              // Long edge: curve above for forward, below for backward
+              curveDir = isForward ? -1 : 1;
+            } else if (hasReverse) {
+              // Bidirectional adjacent: one above, one below
+              curveDir = isForward ? -1 : 1;
+            }
+
+            const dx = pTo.x - pFrom.x;
+            const dy = pTo.y - pFrom.y;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            const ux = dx / len;
+            const uy = dy / len;
+
+            if (curveDir === 0) {
+              // Straight line
+              const sx = pFrom.x + ux * R;
+              const sy = pFrom.y + uy * R;
+              const ex = pTo.x - ux * R;
+              const ey = pTo.y - uy * R;
+
+              return (
+                <g key={key}>
+                  <line x1={sx} y1={sy} x2={ex} y2={ey}
+                    stroke="hsl(220,70%,50%)" strokeWidth="2" />
+                  <path d={arrowHead({ x: ex, y: ey }, { x: ux, y: uy })} fill="hsl(220,70%,50%)" />
+                  <text x={(sx + ex) / 2} y={(sy + ey) / 2 - 10}
+                    textAnchor="middle" dominantBaseline="middle"
+                    className="text-xs font-bold font-mono" fill="hsl(220,70%,50%)"
+                  >{label}</text>
+                </g>
+              );
+            }
+
+            // Curved edge
+            const curveMag = Math.min(60, 30 + dist * 15) * curveDir;
+            const midX = (pFrom.x + pTo.x) / 2;
+            const midY = (pFrom.y + pTo.y) / 2 + curveMag;
+
+            // Start/end on circle boundary toward control point
+            const ctrlFromDx = midX - pFrom.x;
+            const ctrlFromDy = midY - pFrom.y;
+            const ctrlFromLen = Math.sqrt(ctrlFromDx * ctrlFromDx + ctrlFromDy * ctrlFromDy);
+            const sx = pFrom.x + (ctrlFromDx / ctrlFromLen) * R;
+            const sy = pFrom.y + (ctrlFromDy / ctrlFromLen) * R;
+
+            const ctrlToDx = midX - pTo.x;
+            const ctrlToDy = midY - pTo.y;
+            const ctrlToLen = Math.sqrt(ctrlToDx * ctrlToDx + ctrlToDy * ctrlToDy);
+            const ex = pTo.x + (ctrlToDx / ctrlToLen) * R;
+            const ey = pTo.y + (ctrlToDy / ctrlToLen) * R;
+
+            // Arrow direction at endpoint
+            const arrDir = { x: pTo.x - midX, y: pTo.y - midY };
+
+            const path = `M${sx},${sy} Q${midX},${midY} ${ex},${ey}`;
+
+            // Label position
+            const labelX = midX;
+            const labelY = midY + (curveDir < 0 ? -8 : 14);
+
+            return (
+              <g key={key}>
+                <path d={path} fill="none" stroke="hsl(220,70%,50%)" strokeWidth="2" />
+                <path d={arrowHead({ x: ex, y: ey }, arrDir)} fill="hsl(220,70%,50%)" />
+                <text x={labelX} y={labelY}
+                  textAnchor="middle" dominantBaseline="middle"
+                  className="text-xs font-bold font-mono" fill="hsl(220,70%,50%)"
+                >{label}</text>
+              </g>
+            );
+          })}
+
+          {/* State circles */}
+          {dfa.states.map(state => {
+            const pos = statePos.get(state.name)!;
+            return (
+              <g key={state.name}>
+                {/* Outer circle for accepting */}
+                {state.isAccepting && (
+                  <circle cx={pos.x} cy={pos.y} r={R + 5}
+                    fill="none" stroke="hsl(220,70%,50%)" strokeWidth="2" />
+                )}
+                <circle cx={pos.x} cy={pos.y} r={R}
+                  fill="white" stroke="hsl(220,70%,50%)" strokeWidth="2" />
+                <text x={pos.x} y={pos.y}
+                  textAnchor="middle" dominantBaseline="central"
+                  className="text-base font-bold font-mono" fill="hsl(220,70%,50%)"
+                >{state.name}</text>
+              </g>
+            );
+          })}
+        </svg>
       </div>
 
       {/* State definitions */}
@@ -216,9 +272,7 @@ export default function DFAGraph({ dfa, graphRef }: DFAGraphProps) {
         <p className="text-muted-foreground font-sans text-[11px] font-semibold mb-1.5">State Definitions</p>
         {dfa.states.map(s => (
           <div key={s.name} className="flex items-center gap-2">
-            <span className="font-bold" style={{ color: s.isAccepting ? 'hsl(168,70%,35%)' : 'hsl(230,80%,50%)' }}>
-              {s.name}
-            </span>
+            <span className="font-bold" style={{ color: 'hsl(220,70%,50%)' }}>{s.name}</span>
             <span className="text-muted-foreground">=</span>
             <span>{`{${[...s.positions].sort((a, b) => a - b).join(', ')}}`}</span>
             {s.isAccepting && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-sans">accepting</span>}
