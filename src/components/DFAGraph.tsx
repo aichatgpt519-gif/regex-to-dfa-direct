@@ -118,8 +118,6 @@ function buildElements(dfa: DFAResult): { nodes: Node[]; edges: Edge[] } {
       labelBgStyle: {
         fill: 'hsl(0,0%,97%)',
         fillOpacity: 0.95,
-        rx: 6,
-        ry: 6,
       },
       labelBgPadding: [6, 4] as [number, number],
       labelBgBorderRadius: 6,
