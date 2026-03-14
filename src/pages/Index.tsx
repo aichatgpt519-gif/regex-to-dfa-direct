@@ -70,9 +70,7 @@ export default function Index() {
     doc.setFont('helvetica', 'normal');
     doc.text(`Regex: ${regex}`, 14, 30);
     doc.text(`Augmented: ${augmentRegex(regex)}`, 14, 36);
-
     let y = 48;
-    // State defs
     doc.setFont('helvetica', 'bold');
     doc.text('State Definitions:', 14, y);
     y += 8;
@@ -82,21 +80,15 @@ export default function Index() {
       doc.text(`${s.name} = ${posStr}${s.isAccepting ? ' (accepting)' : ''}${s.name === dfa.startState ? ' (start)' : ''}`, 18, y);
       y += 6;
     });
-
     y += 6;
     doc.setFont('helvetica', 'bold');
     doc.text('Transitions:', 14, y);
     y += 8;
-
-    // Header
     const cols = ['State', ...dfa.alphabet];
     const colW = 30;
-    cols.forEach((c, i) => {
-      doc.text(c, 18 + i * colW, y);
-    });
+    cols.forEach((c, i) => { doc.text(c, 18 + i * colW, y); });
     y += 6;
     doc.setFont('helvetica', 'normal');
-
     dfa.states.forEach(state => {
       const row = [
         `${state.isAccepting ? '*' : ''}${state.name}${state.name === dfa.startState ? ' →' : ''}`,
@@ -105,13 +97,30 @@ export default function Index() {
           return t ? t.to : '—';
         }),
       ];
-      row.forEach((cell, i) => {
-        doc.text(cell, 18 + i * colW, y);
-      });
+      row.forEach((cell, i) => { doc.text(cell, 18 + i * colW, y); });
       y += 6;
     });
-
     doc.save('dfa-transition-table.pdf');
+  };
+
+  const exportFullPDF = async () => {
+    if (!dfa || !tree || !followpos) return;
+    setExporting(true);
+    try {
+      await exportFullSolutionPDF(
+        {
+          augmentRef: null,
+          treeRef: treeRef.current,
+          followposRef: null,
+          dfaGraphRef: dfaGraphRef.current,
+          transitionRef: null,
+          ruleRefs: null,
+        },
+        { regex, tree, followpos, dfa }
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
