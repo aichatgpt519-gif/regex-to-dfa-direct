@@ -1,6 +1,6 @@
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, FileImage, FileText, Zap } from 'lucide-react';
+import { FileImage, FileText, Zap, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import RegexInput from '@/components/RegexInput';
 import StepControls from '@/components/StepControls';
@@ -14,6 +14,7 @@ import { computeAll } from '@/algorithms/computeProperties';
 import { buildDFA, DFAResult } from '@/algorithms/dfaBuilder';
 import { toPng } from 'html-to-image';
 import jsPDF from 'jspdf';
+import { exportFullSolutionPDF } from '@/utils/exportFullPDF';
 
 export default function Index() {
   const [regex, setRegex] = useState('');
@@ -22,6 +23,8 @@ export default function Index() {
   const [followpos, setFollowpos] = useState<Map<number, Set<number>> | null>(null);
   const [dfa, setDfa] = useState<DFAResult | null>(null);
   const dfaGraphRef = useRef<HTMLDivElement>(null);
+  const treeRef = useRef<HTMLDivElement>(null);
+  const [exporting, setExporting] = useState(false);
 
   const handleSubmit = useCallback((input: string) => {
     const t = buildSyntaxTree(input);
@@ -67,9 +70,7 @@ export default function Index() {
     doc.setFont('helvetica', 'normal');
     doc.text(`Regex: ${regex}`, 14, 30);
     doc.text(`Augmented: ${augmentRegex(regex)}`, 14, 36);
-
     let y = 48;
-    // State defs
     doc.setFont('helvetica', 'bold');
     doc.text('State Definitions:', 14, y);
     y += 8;
@@ -79,21 +80,15 @@ export default function Index() {
       doc.text(`${s.name} = ${posStr}${s.isAccepting ? ' (accepting)' : ''}${s.name === dfa.startState ? ' (start)' : ''}`, 18, y);
       y += 6;
     });
-
     y += 6;
     doc.setFont('helvetica', 'bold');
     doc.text('Transitions:', 14, y);
     y += 8;
-
-    // Header
     const cols = ['State', ...dfa.alphabet];
     const colW = 30;
-    cols.forEach((c, i) => {
-      doc.text(c, 18 + i * colW, y);
-    });
+    cols.forEach((c, i) => { doc.text(c, 18 + i * colW, y); });
     y += 6;
     doc.setFont('helvetica', 'normal');
-
     dfa.states.forEach(state => {
       const row = [
         `${state.isAccepting ? '*' : ''}${state.name}${state.name === dfa.startState ? ' →' : ''}`,
@@ -102,13 +97,30 @@ export default function Index() {
           return t ? t.to : '—';
         }),
       ];
-      row.forEach((cell, i) => {
-        doc.text(cell, 18 + i * colW, y);
-      });
+      row.forEach((cell, i) => { doc.text(cell, 18 + i * colW, y); });
       y += 6;
     });
-
     doc.save('dfa-transition-table.pdf');
+  };
+
+  const exportFullPDF = async () => {
+    if (!dfa || !tree || !followpos) return;
+    setExporting(true);
+    try {
+      await exportFullSolutionPDF(
+        {
+          augmentRef: null,
+          treeRef: treeRef.current,
+          followposRef: null,
+          dfaGraphRef: dfaGraphRef.current,
+          transitionRef: null,
+          ruleRefs: null,
+        },
+        { regex, tree, followpos, dfa }
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -131,7 +143,10 @@ export default function Index() {
                 <FileImage className="w-3.5 h-3.5" /> PNG
               </Button>
               <Button size="sm" variant="outline" onClick={exportPDF} className="gap-1.5 text-xs">
-                <FileText className="w-3.5 h-3.5" /> PDF
+                <FileText className="w-3.5 h-3.5" /> Table PDF
+              </Button>
+              <Button size="sm" onClick={exportFullPDF} disabled={exporting} className="gap-1.5 text-xs" style={{ background: 'var(--gradient-hero)' }}>
+                <Download className="w-3.5 h-3.5" /> {exporting ? 'Exporting...' : 'Full Solution PDF'}
               </Button>
             </div>
           )}
@@ -210,12 +225,14 @@ export default function Index() {
                       {currentStep >= 3 && ' + Properties'}
                     </div>
                   </div>
-                  <SyntaxTreeView
-                    root={tree}
-                    showNullable={currentStep >= 3}
-                    showFirstpos={currentStep >= 4}
-                    showLastpos={currentStep >= 5}
-                  />
+                  <div ref={treeRef}>
+                    <SyntaxTreeView
+                      root={tree}
+                      showNullable={currentStep >= 3}
+                      showFirstpos={currentStep >= 4}
+                      showLastpos={currentStep >= 5}
+                    />
+                  </div>
                 </motion.div>
               )}
 
