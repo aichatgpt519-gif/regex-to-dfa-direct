@@ -85,8 +85,8 @@ export default function DFAGraph({ dfa, graphRef }: { dfa: DFAResult; graphRef?:
     transMap.get(key)!.push(t.symbol);
   });
 
-  const svgW = PAD_LEFT + order.length * H_GAP + 40;
-  const svgH = V_CENTER * 2 + 20;
+  const svgW = PAD_LEFT + order.length * H_GAP + 60;
+  const svgH = V_CENTER * 2 + 40;
 
   const edgeEntries = [...transMap.entries()];
 
