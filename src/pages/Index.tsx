@@ -23,6 +23,8 @@ export default function Index() {
   const [followpos, setFollowpos] = useState<Map<number, Set<number>> | null>(null);
   const [dfa, setDfa] = useState<DFAResult | null>(null);
   const dfaGraphRef = useRef<HTMLDivElement>(null);
+  const treeRef = useRef<HTMLDivElement>(null);
+  const [exporting, setExporting] = useState(false);
 
   const handleSubmit = useCallback((input: string) => {
     const t = buildSyntaxTree(input);
