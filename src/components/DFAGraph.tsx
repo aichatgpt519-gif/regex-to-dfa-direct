@@ -2,13 +2,13 @@ import { useMemo } from 'react';
 import { DFAResult } from '@/algorithms/dfaBuilder';
 import { motion } from 'framer-motion';
 
-const R = 28;
-const SELF_LOOP_R = 18;
-const ARROW_SIZE = 8;
-const H_GAP = 140;
-const V_CENTER = 160;
-const START_ARROW_LEN = 36;
-const PAD_LEFT = 70;
+const R = 32;
+const SELF_LOOP_R = 22;
+const ARROW_SIZE = 9;
+const H_GAP = 180;
+const V_CENTER = 200;
+const START_ARROW_LEN = 44;
+const PAD_LEFT = 90;
 
 // Distinct colors per state index
 const STATE_COLORS = [
