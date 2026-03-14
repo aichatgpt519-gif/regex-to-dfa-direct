@@ -225,12 +225,14 @@ export default function Index() {
                       {currentStep >= 3 && ' + Properties'}
                     </div>
                   </div>
-                  <SyntaxTreeView
-                    root={tree}
-                    showNullable={currentStep >= 3}
-                    showFirstpos={currentStep >= 4}
-                    showLastpos={currentStep >= 5}
-                  />
+                  <div ref={treeRef}>
+                    <SyntaxTreeView
+                      root={tree}
+                      showNullable={currentStep >= 3}
+                      showFirstpos={currentStep >= 4}
+                      showLastpos={currentStep >= 5}
+                    />
+                  </div>
                 </motion.div>
               )}
 
