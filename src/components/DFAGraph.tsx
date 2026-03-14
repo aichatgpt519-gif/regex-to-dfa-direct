@@ -174,6 +174,7 @@ export default function DFAGraph({ dfa, graphRef }: { dfa: DFAResult; graphRef?:
             const isForward = fromIdx < toIdx;
             const dist = Math.abs(toIdx - fromIdx);
 
+            // Always curve if dist > 1 or bidirectional — separate clearly
             let curveDir = 0;
             if (dist > 1) {
               curveDir = isForward ? -1 : 1;
@@ -196,17 +197,20 @@ export default function DFAGraph({ dfa, graphRef }: { dfa: DFAResult; graphRef?:
               return (
                 <g key={key}>
                   <line x1={sx} y1={sy} x2={ex} y2={ey}
-                    stroke={color} strokeWidth="2.5" />
+                    stroke={color} strokeWidth="2" />
                   <path d={arrowHead({ x: ex, y: ey }, { x: ux, y: uy })} fill={color} />
-                  <text x={(sx + ex) / 2} y={(sy + ey) / 2 - 10}
+                  <text x={(sx + ex) / 2} y={(sy + ey) / 2 - 14}
                     textAnchor="middle" dominantBaseline="middle"
-                    className="text-xs font-bold font-mono" fill={color}
+                    className="text-[13px] font-bold font-mono" fill={color}
                   >{label}</text>
                 </g>
               );
             }
 
-            const curveMag = Math.min(60, 30 + dist * 15) * curveDir;
+            // Scale curve magnitude much more aggressively with distance
+            // so long-range arcs don't collide with intermediate nodes
+            const baseCurve = dist <= 1 ? 40 : 35 + dist * 25;
+            const curveMag = Math.min(140, baseCurve) * curveDir;
             const midX = (pFrom.x + pTo.x) / 2;
             const midY = (pFrom.y + pTo.y) / 2 + curveMag;
 
@@ -225,7 +229,7 @@ export default function DFAGraph({ dfa, graphRef }: { dfa: DFAResult; graphRef?:
             const arrDir = { x: pTo.x - midX, y: pTo.y - midY };
             const path = `M${sx},${sy} Q${midX},${midY} ${ex},${ey}`;
             const labelX = midX;
-            const labelY = midY + (curveDir < 0 ? -8 : 14);
+            const labelY = midY + (curveDir < 0 ? -12 : 18);
 
             return (
               <g key={key}>
