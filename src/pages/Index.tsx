@@ -1,6 +1,6 @@
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, FileImage, FileText, Zap } from 'lucide-react';
+import { FileImage, FileText, Zap, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import RegexInput from '@/components/RegexInput';
 import StepControls from '@/components/StepControls';
@@ -14,6 +14,7 @@ import { computeAll } from '@/algorithms/computeProperties';
 import { buildDFA, DFAResult } from '@/algorithms/dfaBuilder';
 import { toPng } from 'html-to-image';
 import jsPDF from 'jspdf';
+import { exportFullSolutionPDF } from '@/utils/exportFullPDF';
 
 export default function Index() {
   const [regex, setRegex] = useState('');
