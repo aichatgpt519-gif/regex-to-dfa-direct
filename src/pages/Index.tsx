@@ -143,7 +143,10 @@ export default function Index() {
                 <FileImage className="w-3.5 h-3.5" /> PNG
               </Button>
               <Button size="sm" variant="outline" onClick={exportPDF} className="gap-1.5 text-xs">
-                <FileText className="w-3.5 h-3.5" /> PDF
+                <FileText className="w-3.5 h-3.5" /> Table PDF
+              </Button>
+              <Button size="sm" onClick={exportFullPDF} disabled={exporting} className="gap-1.5 text-xs" style={{ background: 'var(--gradient-hero)' }}>
+                <Download className="w-3.5 h-3.5" /> {exporting ? 'Exporting...' : 'Full Solution PDF'}
               </Button>
             </div>
           )}
