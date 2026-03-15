@@ -169,14 +169,11 @@ export default function Index() {
           </div>
 
           {/* Center Panel */}
-          <div className="lg:col-span-6 space-y-4">
-            <AnimatePresence mode="wait">
+          <div className="lg:col-span-6 space-y-4" key={buildKey}>
               {!regex && (
                 <motion.div
-                  key="empty"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
                   className="panel-card flex flex-col items-center justify-center py-20 text-center"
                 >
                   <div
@@ -195,7 +192,6 @@ export default function Index() {
 
               {regex && currentStep >= 1 && (
                 <motion.div
-                  key="augment"
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="panel-card"
@@ -220,7 +216,7 @@ export default function Index() {
               )}
 
               {regex && tree && currentStep >= 2 && (
-                <motion.div key="tree" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
                   <div className="panel-card mb-1">
                     <div className="panel-header">
                       Step 2: Syntax Tree
@@ -243,11 +239,8 @@ export default function Index() {
               )}
 
               {regex && dfa && currentStep >= 7 && (
-                <>
-                  <DFAGraph dfa={dfa} graphRef={dfaGraphRef as React.RefObject<HTMLDivElement>} />
-                </>
+                <DFAGraph dfa={dfa} graphRef={dfaGraphRef as React.RefObject<HTMLDivElement>} />
               )}
-            </AnimatePresence>
           </div>
 
           {/* Right Panel */}
