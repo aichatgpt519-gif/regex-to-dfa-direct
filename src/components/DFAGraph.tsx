@@ -5,10 +5,7 @@ import { motion } from 'framer-motion';
 const R = 32;
 const SELF_LOOP_R = 22;
 const ARROW_SIZE = 9;
-const H_GAP = 180;
-const V_CENTER = 200;
 const START_ARROW_LEN = 44;
-const PAD_LEFT = 90;
 
 // Distinct colors per state index
 const STATE_COLORS = [
@@ -43,7 +40,9 @@ export default function DFAGraph({ dfa, graphRef }: { dfa: DFAResult; graphRef?:
   const layout = useMemo(() => {
     const statePos = new Map<string, Vec>();
     const ordered = [...dfa.states];
+    const n = ordered.length;
 
+    // BFS order
     const visited = new Set<string>();
     const queue = [dfa.startState];
     const order: string[] = [];
@@ -62,31 +61,42 @@ export default function DFAGraph({ dfa, graphRef }: { dfa: DFAResult; graphRef?:
       if (!visited.has(s.name)) order.push(s.name);
     }
 
+    // Adaptive layout: use grid for many states
+    const maxPerRow = n <= 6 ? n : Math.min(6, Math.ceil(Math.sqrt(n * 1.5)));
+    const rows = Math.ceil(n / maxPerRow);
+    const H_GAP = n <= 6 ? 180 : Math.max(120, Math.min(180, 900 / maxPerRow));
+    const V_GAP = 140;
+    const PAD_LEFT = 90;
+    const PAD_TOP = 80;
+
     order.forEach((name, i) => {
-      statePos.set(name, { x: PAD_LEFT + i * H_GAP, y: V_CENTER });
+      const col = i % maxPerRow;
+      const row = Math.floor(i / maxPerRow);
+      statePos.set(name, {
+        x: PAD_LEFT + col * H_GAP,
+        y: PAD_TOP + row * V_GAP,
+      });
     });
 
-    return { statePos, order };
+    const svgW = PAD_LEFT + maxPerRow * H_GAP + 60;
+    const svgH = PAD_TOP + rows * V_GAP + 80;
+
+    return { statePos, order, svgW, svgH };
   }, [dfa]);
 
-  const { statePos, order } = layout;
+  const { statePos, order, svgW, svgH } = layout;
 
-  // Color map: state name → color
   const colorMap = new Map<string, string>();
   order.forEach((name, i) => {
     colorMap.set(name, STATE_COLORS[i % STATE_COLORS.length]);
   });
 
-  // Group transitions by from→to
   const transMap = new Map<string, string[]>();
   dfa.transitions.forEach(t => {
     const key = `${t.from}->${t.to}`;
     if (!transMap.has(key)) transMap.set(key, []);
     transMap.get(key)!.push(t.symbol);
   });
-
-  const svgW = PAD_LEFT + order.length * H_GAP + 60;
-  const svgH = V_CENTER * 2 + 40;
 
   const edgeEntries = [...transMap.entries()];
 
@@ -137,7 +147,7 @@ export default function DFAGraph({ dfa, graphRef }: { dfa: DFAResult; graphRef?:
             );
           })()}
 
-          {/* Edges — colored by source state */}
+          {/* Edges */}
           {edgeEntries.map(([key, symbols]) => {
             const [from, to] = key.split('->');
             const pFrom = statePos.get(from)!;
@@ -167,6 +177,12 @@ export default function DFAGraph({ dfa, graphRef }: { dfa: DFAResult; graphRef?:
               );
             }
 
+            const dx = pTo.x - pFrom.x;
+            const dy = pTo.y - pFrom.y;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            const ux = dx / len;
+            const uy = dy / len;
+
             const reverseKey = `${to}->${from}`;
             const hasReverse = transMap.has(reverseKey);
             const fromIdx = order.indexOf(from);
@@ -174,19 +190,15 @@ export default function DFAGraph({ dfa, graphRef }: { dfa: DFAResult; graphRef?:
             const isForward = fromIdx < toIdx;
             const dist = Math.abs(toIdx - fromIdx);
 
-            // Always curve if dist > 1 or bidirectional — separate clearly
             let curveDir = 0;
-            if (dist > 1) {
+            if (hasReverse) {
               curveDir = isForward ? -1 : 1;
-            } else if (hasReverse) {
+            } else if (dist > 1) {
               curveDir = isForward ? -1 : 1;
             }
 
-            const dx = pTo.x - pFrom.x;
-            const dy = pTo.y - pFrom.y;
-            const len = Math.sqrt(dx * dx + dy * dy);
-            const ux = dx / len;
-            const uy = dy / len;
+            // Scale curve based on distance between nodes
+            const distPx = len;
 
             if (curveDir === 0) {
               const sx = pFrom.x + ux * R;
@@ -207,12 +219,12 @@ export default function DFAGraph({ dfa, graphRef }: { dfa: DFAResult; graphRef?:
               );
             }
 
-            // Scale curve magnitude much more aggressively with distance
-            // so long-range arcs don't collide with intermediate nodes
-            const baseCurve = dist <= 1 ? 40 : 35 + dist * 25;
-            const curveMag = Math.min(140, baseCurve) * curveDir;
-            const midX = (pFrom.x + pTo.x) / 2;
-            const midY = (pFrom.y + pTo.y) / 2 + curveMag;
+            const curveMag = Math.min(140, 35 + distPx * 0.15) * curveDir;
+            // Perpendicular direction for curve offset
+            const perpX = -uy;
+            const perpY = ux;
+            const midX = (pFrom.x + pTo.x) / 2 + perpX * curveMag;
+            const midY = (pFrom.y + pTo.y) / 2 + perpY * curveMag;
 
             const ctrlFromDx = midX - pFrom.x;
             const ctrlFromDy = midY - pFrom.y;
@@ -228,8 +240,11 @@ export default function DFAGraph({ dfa, graphRef }: { dfa: DFAResult; graphRef?:
 
             const arrDir = { x: pTo.x - midX, y: pTo.y - midY };
             const path = `M${sx},${sy} Q${midX},${midY} ${ex},${ey}`;
-            const labelX = midX;
-            const labelY = midY + (curveDir < 0 ? -12 : 18);
+            // Place label offset from the curve midpoint
+            const labelOffX = perpX * (curveDir < 0 ? -14 : 14);
+            const labelOffY = perpY * (curveDir < 0 ? -14 : 14);
+            const labelX = midX + labelOffX;
+            const labelY = midY + labelOffY;
 
             return (
               <g key={key}>
@@ -268,11 +283,11 @@ export default function DFAGraph({ dfa, graphRef }: { dfa: DFAResult; graphRef?:
       {/* State definitions */}
       <div className="p-3 border-t text-xs font-mono space-y-1">
         <p className="text-muted-foreground font-sans text-[11px] font-semibold mb-1.5">State Definitions</p>
-        {dfa.states.map((s, i) => {
+        {dfa.states.map((s) => {
           const color = colorMap.get(s.name)!;
           return (
-            <div key={s.name} className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: color }} />
+            <div key={s.name} className="flex items-center gap-2 flex-wrap">
+              <span className="w-2.5 h-2.5 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: color }} />
               <span className="font-bold" style={{ color }}>{s.name}</span>
               <span className="text-muted-foreground">=</span>
               <span>{`{${[...s.positions].sort((a, b) => a - b).join(', ')}}`}</span>
