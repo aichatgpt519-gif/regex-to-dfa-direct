@@ -25,26 +25,18 @@ export default function Index() {
   const dfaGraphRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
+  const [buildKey, setBuildKey] = useState(0);
 
   const handleSubmit = useCallback((input: string) => {
-    // Reset everything first to clear stale data
-    setCurrentStep(1);
-    setTree(null);
-    setFollowpos(null);
-    setDfa(null);
-
-    // Build new data
     const t = buildSyntaxTree(input);
     const { followpos: fp } = computeAll(t);
     const d = buildDFA(t, fp);
-    
-    // Use setTimeout to ensure state is cleared before setting new data
-    setTimeout(() => {
-      setRegex(input);
-      setTree(t);
-      setFollowpos(fp);
-      setDfa(d);
-    }, 0);
+    setRegex(input);
+    setTree(t);
+    setFollowpos(fp);
+    setDfa(d);
+    setCurrentStep(1);
+    setBuildKey(k => k + 1);
   }, []);
 
   const handleReset = useCallback(() => {
