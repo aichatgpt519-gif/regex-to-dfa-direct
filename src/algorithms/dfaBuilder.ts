@@ -58,7 +58,14 @@ export function buildDFA(
   const stateMap = new Map<string, DFAState>();
 
   let stateCounter = 0;
-  const stateName = () => String.fromCharCode(65 + stateCounter++); // A, B, C...
+  const stateName = () => {
+    const n = stateCounter++;
+    if (n < 26) return String.fromCharCode(65 + n); // A-Z
+    // AA, AB, ... AZ, BA, BB, ...
+    const first = String.fromCharCode(65 + Math.floor((n - 26) / 26));
+    const second = String.fromCharCode(65 + ((n - 26) % 26));
+    return first + second;
+  };
 
   // Initial state = firstpos(root)
   const initPositions = new Set(root.firstpos);
