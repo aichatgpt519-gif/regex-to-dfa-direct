@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { FileImage, FileText, Zap, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import RegexInput from '@/components/RegexInput';
@@ -25,26 +25,18 @@ export default function Index() {
   const dfaGraphRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
+  const [buildKey, setBuildKey] = useState(0);
 
   const handleSubmit = useCallback((input: string) => {
-    // Reset everything first to clear stale data
-    setCurrentStep(1);
-    setTree(null);
-    setFollowpos(null);
-    setDfa(null);
-
-    // Build new data
     const t = buildSyntaxTree(input);
     const { followpos: fp } = computeAll(t);
     const d = buildDFA(t, fp);
-    
-    // Use setTimeout to ensure state is cleared before setting new data
-    setTimeout(() => {
-      setRegex(input);
-      setTree(t);
-      setFollowpos(fp);
-      setDfa(d);
-    }, 0);
+    setRegex(input);
+    setTree(t);
+    setFollowpos(fp);
+    setDfa(d);
+    setCurrentStep(1);
+    setBuildKey(k => k + 1);
   }, []);
 
   const handleReset = useCallback(() => {
@@ -177,14 +169,11 @@ export default function Index() {
           </div>
 
           {/* Center Panel */}
-          <div className="lg:col-span-6 space-y-4">
-            <AnimatePresence mode="wait">
+          <div className="lg:col-span-6 space-y-4" key={buildKey}>
               {!regex && (
                 <motion.div
-                  key="empty"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
                   className="panel-card flex flex-col items-center justify-center py-20 text-center"
                 >
                   <div
@@ -203,7 +192,6 @@ export default function Index() {
 
               {regex && currentStep >= 1 && (
                 <motion.div
-                  key="augment"
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="panel-card"
@@ -228,7 +216,7 @@ export default function Index() {
               )}
 
               {regex && tree && currentStep >= 2 && (
-                <motion.div key="tree" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
                   <div className="panel-card mb-1">
                     <div className="panel-header">
                       Step 2: Syntax Tree
@@ -251,11 +239,8 @@ export default function Index() {
               )}
 
               {regex && dfa && currentStep >= 7 && (
-                <>
-                  <DFAGraph dfa={dfa} graphRef={dfaGraphRef as React.RefObject<HTMLDivElement>} />
-                </>
+                <DFAGraph dfa={dfa} graphRef={dfaGraphRef as React.RefObject<HTMLDivElement>} />
               )}
-            </AnimatePresence>
           </div>
 
           {/* Right Panel */}
